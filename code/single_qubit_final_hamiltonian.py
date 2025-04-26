@@ -3,13 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-# CREATE THE TIME-DEPENDENT HAMILTONIAN FOR THE SYSTEM
+# CREATE THE HAMILTONIAN FOR THE SYSTEM
 
 # Define the parameters
 omega_c = 1.0  # Cavity frequency
 omega_q = 1.5  # Qubit frequency
 omega_d = 0.95 * omega_c  # Driving frequency for cavity (near cavity frequency)
-omega_r = 0.95 * omega_q  # Driving frequency for qubit (near qubit frequency)
 epsilon_d = 0.2  # Driving amplitude for cavity
 epsilon_r = 0.3  # Driving amplitude for qubit
 g = 0.05   # Coupling strength (must be small for approximations)
@@ -21,27 +20,21 @@ sigma_minus = qt.destroy(2) # Qubit lowering operator
 sigma_plus = qt.create(2)  # Qubit raising operator
 sigma_z = qt.sigmaz()  # Qubit Z operator
 
+kappa = 0.01  # Proportional to the Hamiltonian
+Delta = omega_q - omega_c
+Delta_c = omega_d - omega_c
+Omega_R = -2 * epsilon_r * g / Delta
+chi = g**2 / Delta
+
+abar = epsilon_d / (Delta_c + 0.5j * kappa)
+d = a - abar
+
 # Define the Hamiltonian terms
-term1 = omega_c * a.dag() * a
-term2 = -1/2 * omega_q * sigma_z
-term3 = g * (a.dag() * sigma_minus + a * sigma_plus)
+term1 = -Delta_c * d.dag() * d
+term2 = -0.5 * Omega_R * sigma_z
+term3 = -chi * (np.conjugate(abar) * d * sigma_plus + abar * d.dag() * sigma_minus)
 
-# Define the time-dependent coefficients
-def term4_coeff(t, args):
-    coeff_d = args['epsilon_d'] * np.exp(-1j * args['omega_d'] * t)
-    coeff_r = args['epsilon_r'] * np.exp(-1j * args['omega_r'] * t)
-    return coeff_d + coeff_r
-
-def term4_coeff_conj(t, args):
-    return np.conjugate(term4_coeff(t, args))
-
-args = dict(epsilon_d=epsilon_d, omega_d=omega_d, epsilon_r=epsilon_r, omega_r=omega_r)
-
-# Combine the terms into a list for the time-dependent Hamiltonian
-H_terms = [term1, term2, term3, [a.dag(), term4_coeff], [a, term4_coeff_conj]]
-
-# Create the time-dependent Hamiltonian object
-H_t = qt.QobjEvo(H_terms, args=args)
+H = term1 + term2 + term3
 
 
 # SOLVE THE LINDBLAD EQUATION
@@ -54,7 +47,7 @@ psi0 = qt.basis(2, 0)  # Initial state
 times = np.linspace(0.0, 10.0, 1000)  # Time span to evaluate
 e_ops = dict(z=sigma_z, x=sigma_x)  # Evaluation operators
 
-result = qt.mesolve(H_t, psi0, times, e_ops=e_ops)  # Result of the master equation
+result = qt.mesolve(H, psi0, times, e_ops=e_ops)  # Result of the master equation
 
 # Visualize result
 for k,v in result.e_data.items():
