@@ -12,7 +12,7 @@ omega_d = 0.95 * omega_c  # Driving frequency for cavity (near cavity frequency)
 omega_r = 0.95 * omega_q  # Driving frequency for qubit (near qubit frequency)
 epsilon_d = 0.2  # Driving amplitude for cavity
 epsilon_r = 0.3  # Driving amplitude for qubit
-g = 0.05   # Coupling strength (must be small for approximations)
+g = 0.05   # Qubit-cavity coupling constant (must be small for approximations)
 
 # Define the operators
 a = qt.destroy(2)  # Cavity annihilation operator
@@ -21,24 +21,29 @@ sigma_minus = qt.destroy(2) # Qubit lowering operator
 sigma_plus = qt.create(2)  # Qubit raising operator
 sigma_z = qt.sigmaz()  # Qubit Z operator
 
-# Define the Hamiltonian terms
-term1 = omega_c * a.dag() * a
-term2 = -1/2 * omega_q * sigma_z
-term3 = g * (a.dag() * sigma_minus + a * sigma_plus)
+# Define the terms of the Jaynes-Cummings Hamiltonian
+H_c = omega_c * a.dag() * a  # Cavity Hamiltonian
+H_q = -1/2 * omega_q * sigma_z  # Qubit Hamiltonian
+H_int = g * (a * sigma_plus + a.dag() * sigma_minus)  # Interaction Hamiltonian
+# Note: The first term describes the annihilation of a photon (absorption) and
+#       creation of an atomic excitation while the second term describes the
+#       creation of a photon (emission) and annihilation of an atomic excitation.
 
-# Define the time-dependent coefficients
+H_jc = H_c + H_q + H_int  # Jaynes-Cummings Hamiltonian
+
+# Define the time-dependent coefficients of the two external drives
 def term4_coeff(t, args):
     coeff_d = args['epsilon_d'] * np.exp(-1j * args['omega_d'] * t)
     coeff_r = args['epsilon_r'] * np.exp(-1j * args['omega_r'] * t)
     return coeff_d + coeff_r
 
 def term4_coeff_conj(t, args):
-    return np.conjugate(term4_coeff(t, args))
+    return np.conj(term4_coeff(t, args))
 
 args = dict(epsilon_d=epsilon_d, omega_d=omega_d, epsilon_r=epsilon_r, omega_r=omega_r)
 
 # Combine the terms into a list for the time-dependent Hamiltonian
-H_terms = [term1, term2, term3, [a.dag(), term4_coeff], [a, term4_coeff_conj]]
+H_terms = [H_jc, [a.dag(), term4_coeff], [a, term4_coeff_conj]]
 
 # Create the time-dependent Hamiltonian object
 H_t = qt.QobjEvo(H_terms, args=args)
@@ -50,7 +55,7 @@ H_t = qt.QobjEvo(H_terms, args=args)
 sigma_x = qt.sigmax()  # Qubit X operator
 
 # Define parameters for the master eqation solver
-psi0 = qt.basis(2, 0)  # Initial state
+psi0 = (qt.basis(2, 0) + qt.basis(2, 1)).unit()  # Initial state (|+>)
 times = np.linspace(0.0, 10.0, 1000)  # Time span to evaluate
 e_ops = dict(z=sigma_z, x=sigma_x)  # Evaluation operators
 
