@@ -11,3 +11,5 @@
 *.bcf
 *.xml
 *.swp
+*.pkl
+*.pyc
