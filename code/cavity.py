@@ -4,30 +4,28 @@ import matplotlib.pyplot as plt
 from cache_utils import get_hash, save_result, load_result
 
 # Define the cavity dimension (number of Fock states)
-N = 15
+N = 20
 
 # Create the annihilation operator for the cavity
 a = qt.destroy(N)
 
-# Create number operator
-n = a.dag() * a
-
 # Define parameters
-omega_c = 2 * np.pi * 6.826  # Cavity frequency (nu_c = 6.826 GHz)
-epsilon_d = 0.9 * omega_c  # Driving frequency for cavity (near cavity frequency)
-kappa = 2 * np.pi * 4.3 * 1e-3  # Linewidth (kappa / 2 pi = 4.3 MHz)
-
-# Define epsilon_d range (as fraction of omega_c)
-epsilon_d_range = np.linspace(0.5, 1.5, 10) * omega_c
-expect = np.zeros((len(epsilon_d_range), N))
+omega = 1  # Cavity frequency
+epsilon = 0.9 * omega  # Driving frequency for cavity (near cavity frequency)
+kappa = 0.2
 
 # Plot the results
 fig = plt.figure()
 ax1 = fig.add_subplot(111)
 
-for j, epsilon_d in enumerate(epsilon_d_range):
+expect = np.zeros((10, N))
+for j, displacement in enumerate(np.linspace(0.9, 2.8, 10) * omega / (omega + 0.5j * kappa)):
+
+    # Displace destroy operator
+    d = a - displacement
+
     # Define the Hamiltonian
-    H = omega_c * a.dag() * a + epsilon_d * (a + a.dag())  # Free Hamiltonian + drive
+    H = omega * d.dag() * d  + 3 * omega
 
     # Define collapse operators for Lindblad master equation
     c_ops = [np.sqrt(kappa) * a]  # Cavity decay
@@ -38,38 +36,9 @@ for j, epsilon_d in enumerate(epsilon_d_range):
     # Define time points for evolution
     tlist = np.linspace(0, 10, 100)  # 10 seconds evolution
 
-    # Define solver options
-    options = {
-        'nsteps': 10000,
-        'store_states': True,
-        'rtol': 1e-8,
-        'atol': 1e-8
-    }
-
-    # Create parameter dictionary for hashing
-    params = {
-        'N': N,
-        'omega_c': omega_c,
-        'epsilon_d': epsilon_d,
-        'kappa': kappa,
-        'tlist': tlist.tolist(),
-        'options': options
-    }
-
-    # Get hash of parameters
-    hash_value = get_hash(params)
-
-    # Try to load cached result
-    result = load_result(hash_value, prefix="cavity")
-
-    # If no cached result exists, calculate and save
-    if result is None:
-        print("Calculating new result...")
-        result = qt.mesolve(H, psi0, tlist, c_ops, options=options)
-        save_result(result, hash_value, prefix="cavity")
-        print(f"Result saved with hash: {hash_value}")
-    else:
-        print(f"Loaded cached result with hash: {hash_value}")
+    # Solve the master equation
+    options = qt.Options(nsteps=10000, atol=1e-8, rtol=1e-6)
+    result = qt.mesolve(H, psi0, tlist, c_ops, options=options)
 
     # Get the final density matrix
     rho_final = result.states[-1]
@@ -81,7 +50,8 @@ for j, epsilon_d in enumerate(epsilon_d_range):
         # Calculate expectation value
         expect[j, i] = qt.expect(P, rho_final)
 
-    ax1.plot(expect[j], label=f'$\\epsilon_d/\\omega_c = {epsilon_d/omega_c:.2f}$')
+    ax1.plot(expect[j], label='displacement = ' + f'{displacement:.2f}')
+    print(expect[j])
 
 ax1.set_xlabel('$n$')
 ax1.set_ylabel('$\\langle n|\\rho_\\mathrm{final}|n\\rangle$')
