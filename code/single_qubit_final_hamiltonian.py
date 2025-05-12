@@ -24,7 +24,7 @@ N_cavity = 10  # Number of Fock states for cavity
 N_qubit = 2  # Number of states for qubit
 
 # Time range
-time_range = np.linspace(0, 10, 100)
+t_range = np.linspace(0, 10, 100)
 
 # Calculate detuning
 # Delta_c = omega_d - omega_c  # Cavity detuning (same as -Omega_R)
@@ -49,7 +49,7 @@ sigma_plus = qt.tensor(I_c, qt.create(N_qubit))  # Qubit raising operator
 sigma_minus = qt.tensor(I_c, qt.destroy(N_qubit))  # Qubit lowering operator
 
 # ==================================================================================================
-# Define Displacement-dependent Functions
+# Define Functions
 # ==================================================================================================
 
 def hamiltonian(displacement):
@@ -76,23 +76,56 @@ def Gamma_plus(displacement):
 def Gamma_minus(displacement):
     return kappa * chi**2 * np.abs(displacement)**2 / ((2 * Omega_R)**2 + (kappa / 2)**2) + (1 / (2 * T_2))
 
+def P(N, i):
+    return qt.tensor(qt.basis(N, i) * qt.basis(N, i).dag(), I_q)
+
+def run_simulation(displacement):
+    # Collapse operators (dissipation)
+    c_ops = [
+        np.sqrt(kappa) * a,
+        np.sqrt(Gamma_phi / 2) * sigma_z,
+        np.sqrt(Gamma_plus(displacement)) * sigma_plus,
+        np.sqrt(Gamma_minus(displacement)) * sigma_minus
+    ]
+
+    H = hamiltonian(displacement)
+    
+    result = qt.mesolve(H, psi0, t_range, c_ops, options=options)
+    rho_final = result.states[-1]
+    
+    # Calculate expectations
+    sx = qt.expect(sigma_x, rho_final)
+    sz = qt.expect(sigma_z, rho_final)
+    n_exp = qt.expect(n, rho_final)
+    a_exp = np.abs(qt.expect(a, rho_final))**2
+    
+    # Calculate P expectations
+    P_exp = np.zeros(N_cavity)
+    for j in range(N_cavity):
+        P_exp[j] = qt.expect(P(N_cavity, j), rho_final)
+    
+    return {
+        'sx': sx,
+        'sz': sz,
+        'n': n_exp,
+        'a': a_exp,
+        'P': P_exp,
+        'states': result.states
+    }
+
 # ==================================================================================================
-# Simulation Parameters
+# Simulation
 # ==================================================================================================
 
 # Range of average photon numbers to simulate
 blah = Delta_c + 0.5j * kappa
-displacement_range = np.sqrt(np.linspace(0, 10, 10)) * np.abs(blah) / blah
-
-# ==================================================================================================
-# Simulation and Analysis
-# ==================================================================================================
+# displacement_range = np.sqrt(np.linspace(0, 10, 10)) * np.abs(blah) / blah
+displacement_range = np.array([2]) * np.abs(blah) / blah
 
 # Define initial state (|0⟩_c ⊗ |+⟩_q)
 psi0_cavity = qt.basis(N_cavity, 0)                                # Cavity ground state
 psi0_qubit = (qt.basis(N_qubit, 0) + qt.basis(N_qubit, 1)).unit()  # Qubit |+⟩ state
 psi0 = qt.tensor(psi0_cavity, psi0_qubit)
-
 
 # Evaluation operators (observables)
 e_ops = {
@@ -104,52 +137,22 @@ e_ops = {
 options = dict(
     store_states=True,
     progress_bar=True,
-    nsteps=50000,      # Increased number of steps
-    rtol=1e-6,
-    atol=1e-6,
-    max_step=0.1,
-    method='adams'     # Using Adams method which can be more stable
+    nsteps=int(1e6),
+    rtol=1e-4,
+    atol=1e-4,
+    max_step=1.0,
 )
 
-# Arrays to store results
-sx_expect = np.zeros_like(displacement_range)
-sz_expect = np.zeros_like(displacement_range)
-n_expect = np.zeros_like(displacement_range)
-a_expect = np.zeros_like(displacement_range)
-n_values = np.zeros((len(displacement_range), N_cavity))
+# Run simulations in parallel
+results = qt.parallel_map(run_simulation, displacement_range)
 
-for i, displacement in enumerate(displacement_range):
-    print(i)
-
-    # Collapse operators (dissipation)
-    c_ops = [
-        np.sqrt(kappa) * a,
-        np.sqrt(Gamma_phi / 2) * sigma_z,
-        np.sqrt(Gamma_plus(displacement)) * sigma_plus,
-        np.sqrt(Gamma_minus(displacement)) * sigma_minus
-    ]
-
-    H = hamiltonian(displacement)
-    
-    result = qt.mesolve(H, psi0, time_range, c_ops, options=options)
-    rho_final = result.states[-1]
-
-    # Store final expectation values from time evolution
-    sx_expect[i] = qt.expect(sigma_x, rho_final)
-    sz_expect[i] = qt.expect(sigma_z, rho_final)
-    n_expect[i] = qt.expect(n, rho_final)
-    a_expect[i] = np.abs(qt.expect(a, rho_final))**2
-    print('|alpha|^2 =', a_expect[i])
-    print('<n> =', n_expect[i])
-
-    # Calculate expectation value of |j⟩ over time
-    for j in range(N_cavity):
-
-        # Create projection operator for |j⟩ state
-        P = qt.tensor(qt.basis(N_cavity, j) * qt.basis(N_cavity, j).dag(), I_q)
-
-        # Calculate expectation value
-        n_values[i, j] = qt.expect(P, rho_final)
+# Extract results
+sx_expect = np.array([r['sx'] for r in results])
+sz_expect = np.array([r['sz'] for r in results])
+n_expect = np.array([r['n'] for r in results])
+a_expect = np.array([r['a'] for r in results])
+P_expect = np.array([r['P'] for r in results])
+result_states = np.array([r['states'] for r in results])
 
 n_bar_values = abs(displacement_range)**2
 
@@ -157,22 +160,25 @@ n_bar_values = abs(displacement_range)**2
 # Visualization
 # ==================================================================================================
 
-fig = plt.figure(figsize=(15, 5))
+fig = plt.figure(figsize=(15, 8))
+ax1 = fig.add_subplot(211)
+ax2 = fig.add_subplot(212)
 
-# Plot qubit observables
-ax1 = fig.add_subplot(121)
-ax1.plot(n_bar_values, sx_expect, label='$\\langle\\sigma_x\\rangle$ simulation')
-ax1.plot(n_bar_values, sz_expect, label='$\\langle\\sigma_z\\rangle$ simulation')
-ax1.set_xlabel('$\\overline{n}$')
-ax1.set_ylabel('$\\langle\\sigma_x\\rangle, \\langle\\sigma_z\\rangle$')
+for j, displacement in enumerate(displacement_range):
+    
+    plot = ax1.plot(P_expect[j])
+    ax1.vlines(n_expect[j][-1], 0, 0.3, color=plot[0].get_color(), label=f'$|\\alpha|^2 = {np.abs(displacement)**2:.2f}$')
+
+    ax2.plot(t_range, n_expect[j], label=j)
+
+ax1.set_xlabel('$n$')
+ax1.set_ylabel('$\\langle n|\\rho_\\mathrm{final}|n\\rangle$')
+ax1.grid(True)
 ax1.legend()
 
-ax2 = fig.add_subplot(122)
-for i in range(len(displacement_range)):
-    plot = ax2.plot(n_values[i], label=f'$\\langle n \\rangle = {n_expect[i]:.2f}$')
-    ax2.vlines(a_expect[i], 0, 1, color=plot[0].get_color(), label=f'$|\\alpha|^2 = {a_expect[i]:.2f}$')
-ax2.set_xlabel('$n$')
+ax2.set_xlabel('$t$')
 ax2.set_ylabel('$\\langle n\\rangle$')
+ax2.grid(True)
 ax2.legend()
 
 plt.show()
