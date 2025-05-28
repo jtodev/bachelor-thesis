@@ -26,7 +26,7 @@ sigma_minus = qt.tensor(I_c, qt.destroy(N_qubit))  # Qubit lowering operator
 
 # Define initial state
 psi0_cavity = qt.basis(N_cavity, 0)  # Cavity ground state
-psi0_qubit =  (qt.basis(N_qubit, 0) - qt.basis(N_qubit, 1)).unit()  # Qubit |-⟩ state
+psi0_qubit = (qt.basis(N_qubit, 0) + qt.basis(N_qubit, 1)).unit()  # Qubit |+⟩ state
 psi0 = qt.tensor(psi0_cavity, psi0_qubit)  # Initial state of the composite system
 
 # Define time points for evolution
@@ -66,7 +66,7 @@ def solve_master_equation(n):
 
     Delta_c = omega_d - omega_c  # Drive detuned from cavity resonance (Delta_c / 2 pi = -9 MHz < 0)
     Delta_q = omega_q - omega_r
-    Omega_R = - 2 * epsilon_r * g / Delta
+    Omega_R = - 2 * epsilon_r * g / Delta  # Rabi frequency (Omega_R = -9 MHz)
 
     epsilon_d = np.sqrt(n) * np.abs(Delta_c + 0.5j * kappa)  # Cavity drive amplitude
     alpha = epsilon_d / Delta_c + 0.5j * kappa  # Equilibrium coherent state eigenvalue
@@ -76,8 +76,8 @@ def solve_master_equation(n):
     T_2 = 10.6e3  # Qubit lab frame dephasing time (T_2 = 10.6 μs)
     T_phi = 2 * T_1  # Qubit pure dephasing time
     Gamma_phi = 1 / T_phi  # Qubit pure dephasing (phase relaxation) rate
-    Gamma_plus = 4 * chi**2 * n / kappa + (1 / (2 * T_2))  # Net cooling rate
-    Gamma_minus = kappa * chi**2 * n / ((2 * Omega_R)**2 + (kappa / 2)**2) + (1 / (2 * T_2))  # Net heating rate
+    Gamma_minus = 4 * chi**2 * n / kappa + (1 / (2 * T_2))  # Net cooling rate
+    Gamma_plus = kappa * chi**2 * n / ((2 * Omega_R)**2 + (kappa / 2)**2) + (1 / (2 * T_2))  # Net heating rate
     Gamma = Gamma_plus + Gamma_minus  # Population relaxation rate
 
     # Define collapse operators
@@ -90,8 +90,8 @@ def solve_master_equation(n):
 
     # Define the displaced Hamiltonian
     H_c = -Delta_c * d.dag() * d
-    H_q = -(Delta_q + chi * (2 * n)) / 2 * sigma_z
-    H_R = -Omega_R / 2 * sigma_x
+    H_q = -0.5 * (Delta_q + chi * (2 * n)) * sigma_z
+    H_R = -0.5 * Omega_R * sigma_x
     H_chi = -chi * (np.conj(alpha) * d + alpha * d.dag() + d.dag() * d) * sigma_z
     H = H_c + H_q + H_R + H_chi
 
